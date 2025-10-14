@@ -1,0 +1,211 @@
+esphome:
+  name: pico-restouch
+  friendly_name: pico-restouch
+
+rp2040:
+  board: rpipicow
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ""
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+spi:
+  clk_pin: GPIO10
+  mosi_pin: GPIO11  
+
+display:
+  # Waveshare Pico-ResTouch 2.8 https://www.waveshare.com/Pico-ResTouch-LCD-2.8.htm
+  - platform: st7789v
+    id: my_display
+    model: CUSTOM
+    height: 320
+    width: 240
+    offset_height: 0
+    offset_width: 0
+    rotation: 90
+    backlight_pin: GPIO13
+    cs_pin: GPIO9
+    dc_pin: GPIO8
+    reset_pin: GPIO15
+    eightbitcolor: True
+    lambda: |-
+            it.strftime(it.get_width(), 0, id(roboto), TextAlign::TOP_RIGHT, "%H:%M", id(esptime).now());
+            it.line(0, 35, 320, 35);
+            it.line(0, 165, 320, 165);
+
+            it.printf(0, 200, id(roboto), "%s", id(bird).state.c_str());
+            it.image(0, 170, id(bird_img));
+            it.image(25, 170, id(mic_img));
+
+            it.printf(5, 40, id(roboto), id(my_green), "Outside");
+            it.image(0, 71, id(therm_img));
+            it.printf(30, 70, id(roboto), "%.0f°C", id(outside_temperature).state);
+            it.printf(30, 100, id(roboto), "%.0f%% ", id(outside_humidity).state);
+            it.image(0, 101, id(hum_img));
+            it.printf(5, 130, id(legend_font), "AQI:"), TextAlign::BOTTOM_LEFT;
+            it.printf(30, 130, id(roboto), id(my_green), "%.0f", id(outdoor_aqi).state), TextAlign::BOTTOM_LEFT;
+
+            it.printf(230, 40, id(roboto), id(my_yellow), "Inside");
+            it.printf(240, 70, id(roboto), "%.0f°C", id(inside_temperature).state), TextAlign::TOP_LEFT;
+            it.image(300, 71, id(therm_img));
+            it.printf(240, 100, id(roboto), "%.0f%% ", id(inside_humidity).state), TextAlign::BOTTOM_LEFT;
+            it.image(300, 101, id(hum_img));
+            it.printf(299, 130, id(legend_font), "AQI:"), TextAlign::BOTTOM_LEFT;
+            it.printf(250, 130, id(roboto), id(my_yellow), "%.0f", id(indoor_aqi).state), TextAlign::BOTTOM_LEFT;
+
+            it.printf(5, 0, id(legend_font), "High:");
+            it.printf(35, 0, id(roboto), "%.0f°C", id(high_temp).state);
+
+            it.printf(100, 0, id(legend_font), "Low:");
+            it.printf(135, 0, id(roboto), "%.0f°C", id(low_temp).state);
+            if (id(daikin_state).state == "heat"){
+              it.image(90, 25, id(home_img), id(my_red));
+              it.image(135, 80, id(fire_img));
+            }
+            else if (id(daikin_state).state == "cool") {
+              it.image(90, 25, id(home_img), id(my_blue));
+              it.image(135, 80, id(ac_img));
+            }
+            else {
+              it.image(90, 25, id(home_img));
+              it.image(135, 80, id(power_img));
+            }
+          
+
+font:
+  - file: "fonts/Roboto-Thin.ttf"
+    id: roboto
+    size: 28
+  - file: "fonts/Roboto-Thin.ttf"
+    id: legend_font
+    size: 12
+  - file: "fonts/Roboto-Thin.ttf"
+    id: value_font
+    size: 14
+
+time:
+  - platform: homeassistant
+    id: esptime
+
+color:
+  - id: my_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: my_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: my_blue
+    red: 0%
+    green: 75%
+    blue: 100%
+  - id: my_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+
+text_sensor:
+  - platform: homeassistant
+    name: "birdnet latest bird"
+    id: bird
+    entity_id: sensor.birdnet_go_common_name
+    internal: True
+  - platform: homeassistant
+    name: "Daikin State"
+    id: daikin_state
+    entity_id: climate.daikin
+    internal: True
+
+sensor:
+  - platform: homeassistant
+    name: "Outside Temp"
+    id: outside_temperature
+    entity_id: sensor.daikin_outdoor_air_temperature
+    internal: True
+
+  - platform: homeassistant
+    name: "Outside Humidity"
+    id: outside_humidity
+    entity_id: sensor.daikin_outdoor_humidity
+    internal: True    
+ 
+  - platform: homeassistant
+    name: "Inside Temp"
+    id: inside_temperature
+    entity_id: sensor.daikin_indoor_temperature
+    internal: True
+
+  - platform: homeassistant
+    name: "Inside Humidity"
+    id: inside_humidity
+    entity_id: sensor.daikin_indoor_humidity
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.kitchener_waterloo_high_temperature
+    id: high_temp
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.kitchener_waterloo_low_temperature
+    id: low_temp 
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.hallway_indoor_air_quality
+    id: indoor_aqi
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.daikin_outdoor_aqi
+    id: outdoor_aqi
+    internal: True
+
+image:
+  defaults:
+    type: BINARY
+    resize: 150x150
+    transparency: chroma_key    
+  images:
+    - file: mdil:home
+      id: hvac
+    - file: mdi:bird
+      id: bird_img
+      resize: 30x30
+    - file: mdi:microphone
+      id: mic_img
+      resize: 30x30
+    - file: mdi:thermometer
+      id: therm_img
+      resize: 25x25
+    - file: mdi:water-percent
+      id: hum_img
+      resize: 25x25
+    - file: https://www.svgrepo.com/show/533502/house-chimney-blank.svg
+      id: home_img
+      resize: 150x150
+    - file: mdi:air-conditioner
+      id: ac_img
+      resize: 60x60
+    - file: mdi:power
+      id: power_img
+      resize: 60x60
+    - file: mdi:fire-circle
+      id: fire_img
+      resize: 60x60
+    - file: mdi:wifi-alert
+      id: alert_img
+      resize: 60x60
