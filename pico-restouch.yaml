@@ -24,6 +24,17 @@ wifi:
 spi:
   clk_pin: GPIO10
   mosi_pin: GPIO11  
+  miso_pin: GPIO12
+
+output:
+  - platform: gpio
+    pin: GPIO13
+    id: gpio_13
+light:
+  - platform: binary
+    output: gpio_13
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
 
 display:
   # Waveshare Pico-ResTouch 2.8 https://www.waveshare.com/Pico-ResTouch-LCD-2.8.htm
@@ -35,11 +46,11 @@ display:
     offset_height: 0
     offset_width: 0
     rotation: 90
-    backlight_pin: GPIO13
+    #backlight_pin: GPIO13
     cs_pin: GPIO9
     dc_pin: GPIO8
     reset_pin: GPIO15
-    eightbitcolor: True
+    #eightbitcolor: True
     lambda: |-
             it.strftime(it.get_width(), 0, id(roboto), TextAlign::TOP_RIGHT, "%H:%M", id(esptime).now());
             it.line(0, 35, 320, 35);
