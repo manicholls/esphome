@@ -1,0 +1,102 @@
+esphome:
+  name: enviro-indoor
+  friendly_name: enviro-indoor
+
+
+rp2040:
+  board: rpipicow
+
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ""
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot in case wifi connection fails
+  ap:
+    ssid: "Enviro-Indoor Fallback Hotspot"
+    password: ""
+
+    
+i2c:
+  - id: bus_a   # RTC + QWST + BME688 + BH1745
+    sda: 4
+    scl: 5
+    scan: true
+
+# Minimal example configuration with common sensors
+bme68x_bsec2_i2c:
+  address: 0x77
+  model: bme688
+  operating_age: 28d
+  sample_rate: ULP
+  supply_voltage: 3.3V
+  temperature_offset: 6.5
+  i2c_id: bus_a
+
+sensor:
+  - platform: bh1750
+    name: "BH1750 Illuminance"
+    address: 0x38
+    update_interval: 60s
+    accuracy_decimals: 4
+    i2c_id: bus_a
+  - platform: bme68x_bsec2
+    temperature:
+      name: "BME688 Temperature"
+    pressure:
+      name: "BME688 Pressure"
+    humidity:
+      name: "BME688 Humidity"
+    iaq:
+      name: "BME688 IAQ"
+      id: iaq
+    co2_equivalent:
+      name: "BME688 CO2 Equivalent"
+    breath_voc_equivalent:
+      name: "BME688 Breath VOC Equivalent"
+    gas_resistance: 
+      name: "BME688 Gas Resistance"
+
+text_sensor:
+  - platform: bme68x_bsec2
+    iaq_accuracy:
+      name: "BME688 IAQ Accuracy"
+  - platform: template
+    name: "BME688 IAQ Classification"
+    lambda: |-
+      if ( int(id(iaq).state) <= 50) {
+        return {"Excellent"};
+      }
+      else if (int(id(iaq).state) >= 51 && int(id(iaq).state) <= 100) {
+        return {"Good"};
+      }
+      else if (int(id(iaq).state) >= 101 && int(id(iaq).state) <= 150) {
+        return {"Lightly polluted"};
+      }
+      else if (int(id(iaq).state) >= 151 && int(id(iaq).state) <= 200) {
+        return {"Moderately polluted"};
+      }
+      else if (int(id(iaq).state) >= 201 && int(id(iaq).state) <= 250) {
+        return {"Heavily polluted"};
+      }
+      else if (int(id(iaq).state) >= 251 && int(id(iaq).state) <= 350) {
+        return {"Severely polluted"};
+      }
+      else if (int(id(iaq).state) >= 351) {
+        return {"Extremely polluted"};
+      }
+      else {
+        return {"error"};
+      }
