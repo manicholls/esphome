@@ -36,6 +36,7 @@ light:
     name: "Backlight"
     restore_mode: ALWAYS_ON
 
+
 display:
   # Waveshare Pico-ResTouch 2.8 https://www.waveshare.com/Pico-ResTouch-LCD-2.8.htm
   - platform: st7789v
@@ -84,16 +85,39 @@ display:
             if (id(daikin_state).state == "heat"){
               it.image(90, 25, id(home_img), id(my_red));
               it.image(135, 80, id(fire_img));
+              if (id(furnace_actual).state){
+                it.image(135, 80, id(fire_img), id(my_orange));
+              }
+              else {
+                it.image(135, 80, id(fire_img));            
+              }
+              if (id(heat_pump_demand).state){
+                it.image(210, 135, id(heatpump_img), id(my_orange));
+              }
+              else {
+                it.image(210, 135, id(heatpump_img));            
+              }   
             }
             else if (id(daikin_state).state == "cool") {
               it.image(90, 25, id(home_img), id(my_blue));
-              it.image(135, 80, id(ac_img));
+              if (id(cooling_demand).state) {
+                it.image(135, 80, id(ac_img), id(my_blue));              
+              }
+              else {
+                it.image(135, 80, id(ac_img));
+              }
             }
             else {
               it.image(90, 25, id(home_img));
               it.image(135, 80, id(power_img));
             }
-          
+            if (id(system_status).state){
+              it.image(290, 170, id(connection_img));
+            }
+            else {
+              it.image(290, 170, id(disconnect_img), id(my_red));
+            }
+       
 
 font:
   - file: "fonts/Roboto-Thin.ttf"
@@ -127,6 +151,16 @@ color:
     red: 100%
     green: 100%
     blue: 0%
+  - id: my_orange
+    red: 100%
+    green: 65%
+    blue: 0%
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
 
 text_sensor:
   - platform: homeassistant
@@ -185,6 +219,27 @@ sensor:
     id: outdoor_aqi
     internal: True
 
+  - platform: homeassistant
+    entity_id: sensor.daikin_indoor_furnace_actual
+    id: furnace_actual
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.daikin_outdoor_heat_pump_demand
+    id: heat_pump_demand
+    internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.daikin_outdoor_cooling_demand
+    id: cooling_demand
+    internal: True
+
+  - platform: adc
+    pin: TEMPERATURE
+    name: "Core Temperature"
+    unit_of_measurement: "°C"
+    filters:
+      - lambda: return 27 - (x - 0.706f) / 0.001721f;
 image:
   defaults:
     type: BINARY
@@ -220,3 +275,12 @@ image:
     - file: mdi:wifi-alert
       id: alert_img
       resize: 60x60
+    - file: mdi:lan-connect
+      id: connection_img
+      resize: 30x30
+    - file: mdi:lan-disconnect
+      id: disconnect_img
+      resize: 30x30
+    - file:  mdi:heat-pump
+      id: heatpump_img
+      resize: 30x30
