@@ -28,12 +28,22 @@ wifi:
     ssid: "Enviro-Indoor Fallback Hotspot"
     password: ""
 
+external_components:
+  - source: github://manicholls/bh1745@main
+    components: [bh1745]
     
 i2c:
   - id: bus_a   # RTC + QWST + BME688 + BH1745
     sda: 4
     scl: 5
     scan: true
+
+bh1745:
+  id: bh1745_base               # <-- Unique ID for the component instance
+  address: 0x38                 # I2C Address (0x38 or 0x39)
+  update_interval: 15s           # Polling interval
+  integration_time: 320ms       # 160ms, 320ms, 640ms, 1280ms
+  gain: 32x                     # 1x or 32x
 
 # Minimal example configuration with common sensors
 bme68x_bsec2_i2c:
@@ -46,12 +56,24 @@ bme68x_bsec2_i2c:
   i2c_id: bus_a
 
 sensor:
-  - platform: bh1750
-    name: "BH1750 Illuminance"
-    address: 0x38
-    update_interval: 60s
-    accuracy_decimals: 4
-    i2c_id: bus_a
+  - platform: bh1745
+    id: bh1745_base
+    illuminance:
+      name: "Ambient Lux"
+      unit_of_measurement: "lx"
+      accuracy_decimals: 2
+    red:
+      name: "Ambient Red Channel"
+    green:
+      name: "Ambient Green Channel"
+    blue:
+      name: "Ambient Blue Channel"
+  - platform: adc
+    pin: TEMPERATURE
+    name: "Core Temperature"
+    unit_of_measurement: "°C"
+    filters:
+      - lambda: return 27 - (x - 0.706f) / 0.001721f;
   - platform: bme68x_bsec2
     temperature:
       name: "BME688 Temperature"
