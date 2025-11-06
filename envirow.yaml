@@ -1,11 +1,18 @@
 esphome:
   name: enviro-indoor
   friendly_name: enviro-indoor
+  on_boot: 
+    priority: 1000
+    then:
+      - lambda: |-
+          pinMode(2, OUTPUT);
+          digitalWrite(2, HIGH);
+          delay(100);
+      - pcf85063.read_time:
 
 
 rp2040:
   board: rpipicow
-
 
 # Enable logging
 logger:
@@ -26,7 +33,7 @@ wifi:
   # Enable fallback hotspot in case wifi connection fails
   ap:
     ssid: "Enviro-Indoor Fallback Hotspot"
-    password: ""
+    password: "1234567890"
 
 external_components:
   - source: github://manicholls/bh1745@main
@@ -38,11 +45,15 @@ i2c:
     scl: 5
     scan: true
 
+i2c_device:
+  id: rtc
+  address: 0x51
+
 bh1745:
   id: bh1745_base               # <-- Unique ID for the component instance
   address: 0x38                 # I2C Address (0x38 or 0x39)
-  update_interval: 15s           # Polling interval
-  integration_time: 320ms       # 160ms, 320ms, 640ms, 1280ms
+  update_interval: 60s           # Polling interval
+  integration_time: 160ms       # 160ms, 320ms, 640ms, 1280ms
   gain: 32x                     # 1x or 32x
 
 # Minimal example configuration with common sensors
@@ -52,7 +63,7 @@ bme68x_bsec2_i2c:
   operating_age: 28d
   sample_rate: ULP
   supply_voltage: 3.3V
-  temperature_offset: 6.5
+  temperature_offset: 8.5
   i2c_id: bus_a
 
 sensor:
@@ -61,7 +72,7 @@ sensor:
     illuminance:
       name: "Ambient Lux"
       unit_of_measurement: "lx"
-      accuracy_decimals: 2
+      accuracy_decimals: 0
     red:
       name: "Ambient Red Channel"
     green:
@@ -122,3 +133,43 @@ text_sensor:
       else {
         return {"error"};
       }
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
+
+  - id: poke_button
+    name: "Poke Button"
+    platform: gpio
+    pin: 
+      number: GPIO7
+      inverted: true
+    #filters:
+    #  - delayed_on: 10ms      
+    on_press:
+      then:
+        - logger.log: "Poke Button Pressed"
+
+status_led:
+  pin:
+    number: GPIO32
+
+time:
+  - platform: pcf85063
+    id: pcf85063_time
+    address: 0x51
+    update_interval: never
+  - platform: homeassistant
+    # instead try to synchronize via network repeatedly ...
+    on_time_sync:
+      then:
+        # ... and update the RTC when the synchronization was successful
+        - pcf85063.write_time:
+        - lambda: |-
+            id(rtc).write_byte(0x01, 0x07);
+output:
+  - platform: gpio
+    pin: GPIO2
+    id: HOLD_VSYS_ENV
