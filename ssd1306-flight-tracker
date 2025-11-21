@@ -7,7 +7,7 @@ rp2040:
 
 # Enable logging
 logger:
-
+  level: INFO
 # Enable Home Assistant API
 api:
   encryption:
@@ -20,18 +20,14 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  power_save_mode: NONE
 
-light:
-  - platform: status_led
-    name: "Status LED"
-    pin: GPIO32
+mdns:
 
-binary_sensor:
-  - platform: status
-    name: "Node Status"
-    id: system_status
-    icon: mdi:lan-connect
-    
+status_led:
+  pin:
+    number: GPIO32
+
 spi:
   clk_pin: GPIO10
   mosi_pin: GPIO11
@@ -41,18 +37,19 @@ display:
     model: "SSD1305 128x32"
     cs_pin: GPIO9
     dc_pin: GPIO8
+    #reset_pin: GPI012
     offset_x: 4
     id: my_display
     pages:
       - id: page1
         lambda: |-
-          if (id(nearest_flight_number).has_state()) {
+          // --- Flight Number ---
+          if (id(planes_nearby).state ) {
             id(my_display).turn_on();
-
             it.image(0, 0, id(plane_img));
-            it.print(15, 0, id(my_font), id(nearest_flight_number).state.c_str());
+            it.print(15, 0, id(my_font), id(line_1).state.c_str());
             it.print(0, 10, id(my_font), id(airport_od).state.c_str());
-            it.print(0, 20, id(my_font), id(nearest_flight_model).state.c_str());
+            it.print(0, 20, id(my_font), id(flight_model).state.c_str());
 
           } else {
             id(my_display).turn_off();
@@ -60,99 +57,161 @@ display:
      
 # Optional: Custom font
 font:
-  - file: "gfonts://Barlow"
+  - file: "gfonts://Doto"
     id: my_font
     size: 10
 
 # --- SENSORS ---
-
 text_sensor:
-  # Sensor to hold the final parsed flight number
-  - platform: template
-    id: nearest_flight_number
-    name: "Nearest Flight Number"
-    icon: "mdi:airplane"
+  - platform: homeassistant
+    entity_id: sensor.closest_flight_callsign
+    id: flight_callsign
+    name: "Nearest Flight Callsign"
     internal: True
-  - platform: template
-    id: nearest_flight_model
+    on_value: 
+      then:
+        - component.update: line_1
+
+  - platform: homeassistant
+    entity_id: sensor.closest_flight_aircraft
+    id: flight_model
     name: "Nearest Flight Model"
-    icon: "mdi:arrow-up-down"
     internal: True
+
+  - platform: homeassistant
+    entity_id: sensor.closest_flight_origin
+    id: airport_origin
+    name: "Airport Origin"
+    internal: True
+    on_value: 
+      then:
+        - component.update: airport_od
+
+  - platform: homeassistant
+    entity_id: sensor.closest_flight_destination
+    id: airport_destination
+    name: "Airport Destination"
+    internal: True
+    on_value: 
+      then:
+        - component.update: airport_od
+
+  - platform: homeassistant
+    entity_id: sensor.closest_flight_airline
+    id: airline
+    name: "Airline"
+    internal: True
+    on_value: 
+      then:
+        - component.update: line_1
+  
+  - platform: template
+    id: line_1
+    name: "Display Line 1"
+    internal: True
+    lambda: |-
+          std::string s1 = id(airline).state;
+          std::string s2 = id(flight_callsign).state;
+
+          if (s1.empty() || s1 == "None" || s1 == "unavailable" || s1 == "unknown"){
+            // If no airline, return the callsign.
+            if (s2.empty() || s2 == "None" || s2 == "unavailable" || s2 == "unknown"){
+              return {};
+            } else {
+              return s2;
+            }
+          } else {
+            // Return the airline
+            return s1;
+          }
+
   - platform: template
     id: airport_od
-    name: "Airport Origin & Destination"
+    name: "Combined Airport Origin & Destination"
     internal: True
-  - platform: template
-    id: airline_short
-    name: "Airline"
-    internal: True  
-  # Sensor to import the raw 'flights' attribute from Home Assistant
+    lambda: |-
+          // Access the states of the imported sensors
+          std::string s1 = id(airport_origin).state;
+          std::string s2 = id(airport_destination).state;
+
+          if (s2.empty() || s2 == "None" || s2 == "unavailable" || s2 == "unknown"){
+            // If there's no destination, don't bother joining the strings.
+            return s1;
+          } else {
+            // Concatenate them with a separator
+            return s1 + " > " + s2;
+          }
+binary_sensor:
   - platform: homeassistant
-    entity_id: sensor.flightradar24_current_in_area
-    attribute: flights
-    id: fr24_flights_json_string
-    internal: true # Hide this raw data sensor from HA
-    
-    on_value:
-          then:
-            - lambda: |-
-                std::string raw_string = x;
-                
-                // Define the helper function to extract a value based on a key.
-                // This function is designed to handle the Python-style format ('key': 'value')
-                auto extract_value = [&](const std::string& key) -> std::string {
-                    size_t start_pos = raw_string.find(key);
-                    if (start_pos == std::string::npos) return "";
+    entity_id: binary_sensor.planes_nearby
+    id: planes_nearby
+    internal: True
+    on_state: 
+      then:
+        - component.update: airport_od
+        - component.update: line_1
+        - component.update: my_display  # This is probaby very unnecessary
 
-                    // Move past the key, colon, and opening quote: e.g., 'flight_number': '
-                    start_pos = raw_string.find("': '", start_pos);
-                    if (start_pos == std::string::npos) return "";
-                    start_pos += 4; // Move 4 chars past "': '"
-
-                    // Find the closing quote of the value
-                    size_t end_pos = raw_string.find('\'', start_pos);
-                    if (end_pos == std::string::npos) return "";
-
-                    return raw_string.substr(start_pos, end_pos - start_pos);
-                };
-
-                // Check if any flights were found (very basic check)
-                if (raw_string.length() < 10) { 
-                    id(nearest_flight_number).publish_state("N/A");
-                    id(nearest_flight_model).publish_state(0);
-                    ESP_LOGI("parser", "No flights found or string too short.");
-                    return;
-                }
-
-                // --- Extraction ---
-                std::string flight_num = extract_value("'flight_number'");
-                std::string model_str = extract_value("'aircraft_model'");
-                std::string airport_origin_str = extract_value("'airport_origin_city'");
-                std::string airport_destination_str = extract_value("'airport_destination_city'");
-                std::string airline_str = extract_value("'airline_short'");
-                // --- Publishing Results ---
-
-                // Flight Number
-                if (!flight_num.empty()) {
-                    id(nearest_flight_number).publish_state(airline_str + " " + flight_num);
-                    id(airport_od).publish_state(airport_origin_str + " -> " + airport_destination_str);
-                } else {
-                    id(nearest_flight_number).publish_state("No F#");
-                }
-                
-                // model
-                if (!model_str.empty()) {
-                    id(nearest_flight_model).publish_state(model_str);
-                } else {
-                    id(nearest_flight_model).publish_state(0);
-                }
-
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
 image:
   defaults:
     type: BINARY
     resize: 10x10
-    transparency: chroma_key    
+    #transparency: chroma_key    
   images:
     - file: mdi:airplane
       id: plane_img
 
+# ---------------------------------------------------------------------
+# This version puts the parsing back on Home Assistant using helpers.  
+# The various helpers need to be added, but the code is here:
+# ---------------------------------------------------------------------
+# 
+# helper:  Closest Flight Aircraft
+# type:  Template Sensor  
+#            {% set flights = state_attr('sensor.flightradar24_current_in_area', 'flights') %}
+#            {% if flights %}
+#              {{ (flights | sort(attribute='distance'))[0].aircraft_model }}
+#            {% else %}
+#              None
+#            {% endif %} 
+#
+#
+#helper: Closest Flight Airline
+#type: Template Sensor
+#            {% set flights = state_attr('sensor.flightradar24_current_in_area', 'flights') %}
+#            {% if flights %}
+#              {{ (flights | sort(attribute='distance'))[0].airline_short }}
+#            {% else %}
+#              None
+#            {% endif %}
+#helper: Closest Flight Callsign
+#type: Template Sensor
+#          {% set flights = state_attr('sensor.flightradar24_current_in_area', 'flights') %}
+#          {% if flights %}
+#            {{ (flights | sort(attribute='distance'))[0].flight_number | default((flights | sort(attribute='distance'))[0].callsign) }}
+#          {% else %}
+#            No Flight
+#          {% endif %}
+#helper: Closest Flight Origin
+#type: Template Sensor
+#            {% set flights = state_attr('sensor.flightradar24_current_in_area', 'flights') %}
+#            {% if flights %}
+#              {{ (flights | sort(attribute='distance'))[0].airport_origin_city }}
+#            {% else %}
+#              None
+#            {% endif %}
+#helper: Closest Flight Destination
+#type: Template Sensor
+#            {% set flights = state_attr('sensor.flightradar24_current_in_area', 'flights') %}
+#            {% if flights %}
+#              {{ (flights | sort(attribute='distance'))[0].airport_destination_city }}
+#            {% else %}
+#              None
+#            {% endif %}
+#helper: Planes Nearby
+#type: Template Binary Sensor
+#            {{ states('sensor.flightradar24_current_in_area') | int(0) > 0 }}
