@@ -1,0 +1,202 @@
+esphome:
+  name: "plasma-stick"
+  friendly_name: Plasma Stick
+  on_boot:
+    priority: -100  # Waits until the system is fully started and sensors are ready
+    then:
+      - light.turn_on:
+          id: led_strip
+          effect: "Weather"
+
+rp2040:
+  board: rpipicow
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ""
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+i2c:
+  - id: bus_a   
+    sda: 4
+    scl: 5
+    scan: true
+sensor:
+  - platform: adc
+    pin: TEMPERATURE
+    name: "Core Temperature"
+    unit_of_measurement: "°C"
+    filters:
+      - lambda: return 27 - (x - 0.706f) / 0.001721f;
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
+
+status_led:
+  pin:
+    number: GPIO32
+
+button:
+  - platform: restart
+    name: "Restart"
+
+# Store the weather state globally
+globals:
+  - id: current_weather
+    type: std::string
+    restore_value: yes
+    initial_value: '"sunny"'
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_weather
+    entity_id: weather.ayr_weather_home
+    on_value:
+      then:
+        - lambda: 'id(current_weather) = x;'
+        - light.turn_on:
+            id: led_strip
+            effect: "Weather"
+
+light:
+  - platform: rp2040_pio_led_strip
+    id: led_strip
+    name: "Plasma Stick LEDs"
+    pin: GPIO15
+    num_leds: 50
+    rgb_order: RGB
+    chipset: WS2812
+    pio: 0
+    restore_mode: RESTORE_DEFAULT_ON
+    effects:
+      - pulse:
+          name: "Slow Breathe"
+          transition_length: 1s
+          update_interval: 2s
+      - flicker:
+      - addressable_rainbow:
+          name: Rainbow
+          speed: 10
+          width: 50
+      - addressable_twinkle:
+          name: Twinkle
+          twinkle_probability: 5%
+          progress_interval: 4ms
+      - addressable_fireworks:
+          name: Fireworks
+          update_interval: 32ms
+          spark_probability: 10%
+          use_random_color: false
+          fade_out_rate: 120
+      - addressable_flicker:
+          name: Flicker Effect
+          update_interval: 16ms
+          intensity: 5%
+      - addressable_lambda:
+          name: "Weather"
+          update_interval: 20ms
+          lambda: |-
+            static std::vector<float> current_brightness;
+            static std::vector<float> target_brightness;
+            static std::vector<uint8_t> hold_timers;
+            static uint8_t global_flash_timer = 0;
+            static std::string last_state = "";
+
+            if (current_brightness.size() != it.size()) {
+              current_brightness.assign(it.size(), 1.0f);
+              target_brightness.assign(it.size(), 1.0f);
+              hold_timers.assign(it.size(), 0);
+            }
+
+            std::string state = id(current_weather);
+
+            // 1. STATE CHANGE INITIALIZATION
+            if (state != last_state) {
+              last_state = state;
+              float t = 1.0f; 
+              if (state == "cloudy") t = 0.7f;
+              else if (state == "lightning" || state == "pouring") t = 0.5f;
+              else if (state == "night") t = 0.15f; // Very dim for Night Mode
+
+              for (int i = 0; i < it.size(); i++) {
+                target_brightness[i] = t;
+                hold_timers[i] = 0;
+              }
+            }
+
+            // 2. LIGHTNING TRIGGER
+            if ((state == "lightning" || state == "pouring") && global_flash_timer == 0) {
+              if (esphome::random_float() < 0.001f) global_flash_timer = 6;
+            }
+
+            for (int i = 0; i < it.size(); i++) {
+              // A. LIGHTNING OVERRIDE
+              if (global_flash_timer > 0) {
+                if (global_flash_timer == 5 || global_flash_timer == 2) it[i] = Color(0, 0, 0);
+                else it[i] = Color(255, 255, 255); 
+                if (i == it.size() - 1) global_flash_timer--;
+                continue;
+              }
+
+              // B. DYNAMIC STATES (Snow / Rain / Storm)
+              if (state == "snowy" || state == "snow" || state == "rainy" || state == "rain" || state == "pouring" || state == "lightning") {
+                if (hold_timers[i] > 0) {
+                  current_brightness[i] = 1.0f; 
+                  hold_timers[i]--;
+                } 
+                else if (esphome::random_float() < 0.008f) {
+                  current_brightness[i] = 1.0f; 
+                  target_brightness[i] = 0.4f + (esphome::random_float() * 0.4f); 
+                  hold_timers[i] = 12;
+                } 
+                else {
+                  if (std::abs(current_brightness[i] - target_brightness[i]) < 0.01f) {
+                    target_brightness[i] = 0.4f + (esphome::random_float() * 0.4f); 
+                  }
+                  if (current_brightness[i] < target_brightness[i]) current_brightness[i] += 0.0075f;
+                  else current_brightness[i] -= 0.0075f;
+                }
+              }
+              // C. STATIC STATES (Cloudy / Sunny / Sunset / Night)
+              else {
+                if (std::abs(current_brightness[i] - target_brightness[i]) > 0.005f) {
+                  if (current_brightness[i] < target_brightness[i]) current_brightness[i] += 0.005f;
+                  else current_brightness[i] -= 0.005f;
+                }
+              }
+
+              // D. COLOR OUTPUT MAPPING
+              if (state == "snowy" || state == "snow") {
+                it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 255));
+              } 
+              else if (state == "rainy" || state == "rain" || state == "pouring" || state == "lightning") {
+                it[i] = Color((uint8_t)(current_brightness[i] * 80), (uint8_t)(current_brightness[i] * 160), (uint8_t)(current_brightness[i] * 255));
+              }
+              else if (state == "sunset") {
+                it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 50), 0);
+              }
+              else if (state == "night") {
+                // NIGHT MODE: Deep Amber/Red (No blue light)
+                it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 30), 0);
+              }
+              else if (state == "cloudy") {
+                it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 255));
+              }
+              else { // Sunny
+                it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 220), 0); 
+              }
+            }
