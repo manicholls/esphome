@@ -6,6 +6,7 @@ binary_sensor:
 
 sensor:
   - platform: internal_temperature
+    id: internal_temp
     name: "ESP32 Internal Temperature"
     update_interval: 60s
 
