@@ -1,0 +1,21 @@
+sensor:
+  - platform: adc
+    pin: TEMPERATURE
+    name: "Core Temperature"
+    unit_of_measurement: "°C"
+    filters:
+      - lambda: return 27 - (x - 0.706f) / 0.001721f;
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
+
+status_led:
+  pin:
+    number: GPIO32
+
+button:
+  - platform: restart
+    name: "Restart"
