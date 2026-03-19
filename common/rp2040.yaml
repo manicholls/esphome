@@ -14,7 +14,7 @@ binary_sensor:
 
 status_led:
   pin:
-    number: GPIO32
+    number: LED
 
 button:
   - platform: restart
