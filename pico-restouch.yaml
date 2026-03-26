@@ -82,6 +82,14 @@ display:
 
             it.printf(102, 0, id(legend_font), "Low:");
             it.printf(135, 0, id(roboto), "%.0f°C", id(low_temp).state);
+
+            if (id(humidifier).state){
+                it.image(212, 105, id(humidifier_on), id(my_blue));            
+            }
+            else {
+                it.image(212, 105, id(humidifier_off));            
+            }
+
             if (id(daikin_state).state == "heat"){
               it.image(90, 25, id(home_img), id(my_red));
               it.image(135, 80, id(fire_img));
@@ -230,6 +238,11 @@ sensor:
     id: cooling_demand
     internal: True
 
+  - platform: homeassistant
+    entity_id: switch.humidifier_relay_humidifier_relay
+    id: humidifier
+    internal: True
+
 image:
   defaults:
     type: BINARY
@@ -277,3 +290,9 @@ image:
     - file: mdi:smoke
       id: smoke_img
       resize: 40x40
+    - file: mdi:air-humidifier
+      id: humidifier_on
+      resize: 30x30
+    - file: mdi:air-humidifier-off
+      id: humidifier_off
+      resize: 30x30
