@@ -14,12 +14,11 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: ""
+    key: !secret api_key
 
 ota:
   - platform: esphome
-    password: ""
-
+    password: !secret ota_password
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -83,7 +82,7 @@ display:
             it.printf(102, 0, id(legend_font), "Low:");
             it.printf(135, 0, id(roboto), "%.0f°C", id(low_temp).state);
 
-            if (id(humidifier).state){
+            if (id(humidifier).state == "on"){
                 it.image(212, 105, id(humidifier_on), id(my_blue));            
             }
             else {
@@ -177,6 +176,10 @@ text_sensor:
     id: daikin_state
     entity_id: climate.daikin
     internal: True
+  - platform: homeassistant
+    entity_id: switch.humidifier_relay_humidifier_relay
+    id: humidifier
+    internal: True
 
 sensor:
   - platform: homeassistant
@@ -236,11 +239,6 @@ sensor:
   - platform: homeassistant
     entity_id: sensor.daikin_outdoor_cooling_demand
     id: cooling_demand
-    internal: True
-
-  - platform: homeassistant
-    entity_id: switch.humidifier_relay_humidifier_relay
-    id: humidifier
     internal: True
 
 image:
