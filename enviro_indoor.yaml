@@ -10,30 +10,27 @@ esphome:
           delay(100);
       - pcf85063.read_time:
 
-
 rp2040:
   board: rpipicow
 
-# Enable logging
-logger:
+packages:
+  github: github://manicholls/esphome/common/rp2040.yaml
 
-# Enable Home Assistant API
+logger:
+  level: DEBUG
+
 api:
   encryption:
-    key: ""
+    key: !secret api_key
 
 ota:
   - platform: esphome
-    password: ""
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-  # Enable fallback hotspot in case wifi connection fails
-  ap:
-    ssid: "Enviro-Indoor Fallback Hotspot"
-    password: "1234567890"
 
 external_components:
   - source: github://manicholls/bh1745@main
@@ -43,7 +40,7 @@ i2c:
   - id: bus_a   # RTC + QWST + BME688 + BH1745
     sda: 4
     scl: 5
-    scan: true
+    scan: True
 
 i2c_device:
   id: rtc
@@ -55,16 +52,6 @@ bh1745:
   update_interval: 60s           # Polling interval
   integration_time: 160ms       # 160ms, 320ms, 640ms, 1280ms
   gain: 32x                     # 1x or 32x
-
-# Minimal example configuration with common sensors
-bme68x_bsec2_i2c:
-  address: 0x77
-  model: bme688
-  operating_age: 28d
-  sample_rate: ULP
-  supply_voltage: 3.3V
-  temperature_offset: 8.5
-  i2c_id: bus_a
 
 sensor:
   - platform: bh1745
@@ -79,93 +66,41 @@ sensor:
       name: "Ambient Green Channel"
     blue:
       name: "Ambient Blue Channel"
-  - platform: adc
-    pin: TEMPERATURE
-    name: "Core Temperature"
-    unit_of_measurement: "°C"
-    filters:
-      - lambda: return 27 - (x - 0.706f) / 0.001721f;
-  - platform: bme68x_bsec2
+  - platform: bme680
+    address: 0x77
     temperature:
       name: "BME688 Temperature"
-    pressure:
-      name: "BME688 Pressure"
     humidity:
       name: "BME688 Humidity"
-    iaq:
-      name: "BME688 IAQ"
-      id: iaq
-    co2_equivalent:
-      name: "BME688 CO2 Equivalent"
-    breath_voc_equivalent:
-      name: "BME688 Breath VOC Equivalent"
-    gas_resistance: 
+    pressure:
+      name: "BME688 Pressure"
+    gas_resistance:
       name: "BME688 Gas Resistance"
 
-text_sensor:
-  - platform: bme68x_bsec2
-    iaq_accuracy:
-      name: "BME688 IAQ Accuracy"
-  - platform: template
-    name: "BME688 IAQ Classification"
-    lambda: |-
-      if ( int(id(iaq).state) <= 50) {
-        return {"Excellent"};
-      }
-      else if (int(id(iaq).state) >= 51 && int(id(iaq).state) <= 100) {
-        return {"Good"};
-      }
-      else if (int(id(iaq).state) >= 101 && int(id(iaq).state) <= 150) {
-        return {"Lightly polluted"};
-      }
-      else if (int(id(iaq).state) >= 151 && int(id(iaq).state) <= 200) {
-        return {"Moderately polluted"};
-      }
-      else if (int(id(iaq).state) >= 201 && int(id(iaq).state) <= 250) {
-        return {"Heavily polluted"};
-      }
-      else if (int(id(iaq).state) >= 251 && int(id(iaq).state) <= 350) {
-        return {"Severely polluted"};
-      }
-      else if (int(id(iaq).state) >= 351) {
-        return {"Extremely polluted"};
-      }
-      else {
-        return {"error"};
-      }
 
 binary_sensor:
-  - platform: status
-    name: "Node Status"
-    id: system_status
-    icon: mdi:lan-connect
-
-  - id: poke_button
-    name: "Poke Button"
+  - id: activity_button
+    name: "Activity Button"
     platform: gpio
     pin: 
-      number: GPIO7
-      inverted: true
-    #filters:
-    #  - delayed_on: 10ms      
+      number: GPIO7   
     on_press:
       then:
-        - logger.log: "Poke Button Pressed"
-
-status_led:
-  pin:
-    number: GPIO32
+        - logger.log: "Activity Button Pressed"
+        - light.turn_on:
+            id: activity_led
+        - delay: 1000ms
+        - light.turn_off:
+            id: activity_led
 
 time:
   - platform: pcf85063
     id: pcf85063_time
     address: 0x51
     update_interval: never
-  - platform: homeassistant
-    # instead try to synchronize via network repeatedly ...
+  - platform: sntp
     on_time_sync:
       then:
-        # ... and update the RTC when the synchronization was successful
         - pcf85063.write_time:
         - lambda: |-
             id(rtc).write_byte(0x01, 0x07);
@@ -173,3 +108,13 @@ output:
   - platform: gpio
     pin: GPIO2
     id: HOLD_VSYS_ENV
+  - platform: rp2040_pwm
+    id: act_led
+    pin: GPIO6
+
+light:
+  - platform: monochromatic
+    output: act_led
+    id: activity_led
+    name: "Activity LED"
+    internal: True
