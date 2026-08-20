@@ -1,6 +1,6 @@
 sensor:
   - platform: adc
-    pin: TEMPERATURE
+    pin: internal_temperature
     name: "Core Temperature"
     unit_of_measurement: "°C"
     filters:
