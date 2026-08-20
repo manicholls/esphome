@@ -1,0 +1,320 @@
+esphome:
+  name: inky-frame
+# Halt the first screen update until the data actually arrives
+  on_boot:
+    priority: -100
+    then:
+      - wait_until:
+          # tide_graph_csv seems to be the longest to populate so just wait for it
+          lambda: 'return id(tide_graph_csv).has_state();'
+      - component.update: inky_display
+rp2:
+  board: rpipicow
+
+# This is a custom display driver for the inky frame 5.7"
+external_components:
+  - source: github://manicholls/inky_frame_57@main
+    components: [inky_frame_57]
+    refresh: 0s
+
+packages:
+  github: github://manicholls/esphome/common/rp2040.yaml
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  post_connect_roaming: true
+  fast_connect: true
+  on_connect:
+    - switch.turn_on: wifi_led
+  on_disconnect:
+    - switch.turn_off: wifi_led
+api:
+  encryption:
+    key: !secret api_key
+
+logger:
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+spi:
+  id: spi_bus
+  clk_pin: 18
+  mosi_pin: 19
+  miso_pin: 16
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_font
+    size: 20
+  - file: "gfonts://Roboto"
+    id: roboto_small
+    size: 15
+  - file: "gfonts://Roboto"
+    id: roboto_large
+    size: 40
+
+interval:
+  - interval: 900s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(local_tide_level).has_state();'
+          then:
+            - component.update: inky_display    
+display:
+  - platform: inky_frame_57
+    id: inky_display
+    spi_id: spi_bus
+    cs_pin: 17
+    update_interval: never
+    lambda: |-
+      // 1. Clear the canvas to white
+      it.fill(Color(255, 255, 255));
+      
+      // 2. Draw a Blue header bar across the top
+      it.filled_rectangle(0, 0, 600, 60, Color(0, 0, 255));
+      
+      // 3. Print the Header Text (White text on the Blue bar)
+      it.print(20, 7, id(roboto_large), Color(255, 255, 255), "Local Tide Status");
+
+      std::string csv = id(tide_graph_csv).state;
+      
+      if (csv != "unknown" && csv.length() > 0) {
+        // 1. Safely split the CSV string into an array of floats
+        std::vector<float> heights;
+        size_t pos = 0;
+        while ((pos = csv.find(",")) != std::string::npos) {
+            heights.push_back(std::atof(csv.substr(0, pos).c_str()));
+            csv.erase(0, pos + 1);
+        }
+        if (!csv.empty()) {
+            heights.push_back(std::atof(csv.c_str()));
+        }
+
+        // 2. Draw the Graph if we have data
+        if (heights.size() > 1) {
+            int start_x = 40;
+            int graph_w = 520;           // Spread graph across the screen
+            int bottom_y = 180;          // Y-coordinate for the lowest tide
+            int graph_h = 100;           // Total vertical height of the graph
+            int spacing = graph_w / (heights.size() - 1);
+            
+            // Find minimum and maximum heights to dynamically scale the graph
+            float min_h = heights[0], max_h = heights[0];
+            for(float h : heights) {
+                if(h < min_h) min_h = h;
+                if(h > max_h) max_h = h;
+            }
+            float range = max_h - min_h;
+            if (range == 0) range = 1.0; // Prevent divide by zero
+            
+            // 3. Render the lines and data points
+            for(size_t i = 0; i < heights.size() - 1; i++) {
+                int x1 = start_x + (i * spacing);
+                int y1 = bottom_y - (((heights[i] - min_h) / range) * graph_h); 
+                
+                int x2 = start_x + ((i + 1) * spacing);
+                int y2 = bottom_y - (((heights[i+1] - min_h) / range) * graph_h);
+                
+                // Draw connecting line (Blue)
+                it.line(x1, y1, x2, y2, Color(0, 0, 255)); 
+                // Draw data point (Red)
+                it.filled_circle(x1, y1, 5, Color(255, 0, 0)); 
+            }
+            
+            // Draw the final data point dot
+            int last_idx = heights.size() - 1;
+            int last_x = start_x + (last_idx * spacing);
+            int last_y = bottom_y - (((heights.back() - min_h) / range) * graph_h);
+            it.filled_circle(last_x, last_y, 5, Color(255, 0, 0));
+
+            // ==========================================
+            // 4. DRAW THE TIME LEGEND (X-AXIS)
+            // ==========================================
+            
+            // Draw a solid black baseline below the graph
+            int axis_y = bottom_y + 10;
+            it.line(start_x, axis_y, start_x + graph_w, axis_y, Color(0, 0, 0));
+            
+            auto time = id(current_time).now();
+            if (time.is_valid()) {
+                int current_hour = time.hour;
+                
+                // Loop through and add a tick mark and label every 6 hours
+                for (size_t i = 0; i < heights.size(); i += 6) {
+                    int x = start_x + (i * spacing);
+                    int label_hour = (current_hour + i) % 24; // Rolls over at midnight
+                    
+                    // Draw the tick mark
+                    it.line(x, axis_y, x, axis_y + 5, Color(0, 0, 0));
+                    
+                    // Print the formatted hour (TextAlign::TOP_CENTER centers the text directly under the tick)
+                    it.printf(x, axis_y + 10, id(roboto_font), Color(0, 0, 0), TextAlign::TOP_CENTER, "%02d:00", label_hour);
+                }
+                
+                // Always cap off the final point on the far right so the axis feels complete
+                int final_hour = (current_hour + last_idx) % 24;
+                it.line(last_x, axis_y, last_x, axis_y + 5, Color(0, 0, 0));
+                it.printf(last_x, axis_y + 10, id(roboto_font), Color(0, 0, 0), TextAlign::TOP_CENTER, "%02d:00", final_hour);
+            }
+        }
+      } else {
+        it.print(40, 150, id(roboto_font), Color(255, 0, 0), "Awaiting API Prediction Data...");
+      }      
+      // 4. Print the Live Tide Data
+      if (id(local_tide_level).has_state()) {
+        // %.2f formats the sensor state to exactly 2 decimal places
+        it.printf(450, 7, id(roboto_large), Color(255, 255, 255), "%.2f M", id(local_tide_level).state);
+      } else {
+        // Don't print anything
+      }
+      // 5. Temperature and Weather
+      // Pull the raw weather summary string
+      std::string weather = id(weather_summary).state;
+      
+      // Prepare an array (vector) to hold our individual lines
+      std::vector<std::string> lines;
+      std::string current_line = "";
+      int max_len = 55; // Max characters per line
+
+      // Loop through the text and chop it into separate array items
+      for (char c : weather) {
+        if (current_line.length() >= max_len && c == ' ') {
+          lines.push_back(current_line); // Save the finished line
+          current_line = "";             // Reset for the next line
+        } else {
+          current_line += c;    
+        }
+      }
+      // Catch any leftover text at the end of the string
+      if (current_line.length() > 0) {
+        lines.push_back(current_line);
+      }
+
+      // Print each line individually, dropping the Y-coordinate each time
+      int start_y = 300;      // Where the first line begins
+      int line_spacing = 20;  // How many pixels to drop down for the next line
+
+      for (size_t i = 0; i < lines.size(); i++) {
+        it.printf(20, start_y + (i * line_spacing), id(roboto_font), Color(0, 0, 0), "%s", lines[i].c_str());
+      }
+
+      
+      if (id(current_temperature).has_state()) {
+        it.filled_rectangle(0, 230, 600, 60, Color(0, 0, 255));
+        it.printf(20, 235, id(roboto_large), Color(255, 255, 255), "Weather");
+        it.printf(450, 235, id(roboto_large), Color(255, 255, 255), "%.0f C", id(current_temperature).state);
+      }
+
+      // 6 Icons and text for the bottom row buttons
+      it.image(41, 420, id(lamp_img), Color(0, 0, 255));
+      it.print(500,430, id(roboto_small), Color(0, 0, 0), "Refresh Screen");
+
+status_led:
+  pin: 6
+
+# 1. Initialize the Input Shift Register for the Buttons
+sn74hc165:
+  - id: inky_shift_register
+    data_pin: 10
+    clock_pin: 8
+    load_pin: 9
+
+# 2. Map the buttons from the shift register
+binary_sensor:
+  - platform: gpio
+    name: "Button A"
+    pin:
+      sn74hc165: inky_shift_register
+      number: 0
+    on_press:
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: light.living_room_cottage_lamp
+  - platform: gpio
+    name: "Button B"
+    pin:
+      sn74hc165: inky_shift_register
+      number: 1
+  - platform: gpio
+    name: "Button C"
+    pin:
+      sn74hc165: inky_shift_register
+      number: 2
+  - platform: gpio
+    name: "Button D"
+    pin:
+      sn74hc165: inky_shift_register
+      number: 3
+  - platform: gpio
+    name: "Button E"
+    pin:
+      sn74hc165: inky_shift_register
+      number: 4
+    on_press:
+      - switch.turn_on: led_e
+      - component.update: inky_display
+      - delay: 500ms
+      - switch.turn_off: led_e
+# 3. The A-E LEDs (These are direct GPIOs)
+switch:
+  - platform: gpio
+    name: "LED A"
+    pin: 11
+    id: led_a
+  - platform: gpio
+    name: "LED B"
+    pin: 12
+    id: led_b
+  - platform: gpio
+    name: "LED C"
+    pin: 13
+    id: led_c
+  - platform: gpio
+    name: "LED D"
+    pin: 14
+    id: led_d
+  - platform: gpio
+    name: "LED E"
+    id: led_e
+    pin: 15
+  - platform: gpio
+    pin: 7
+    id: wifi_led
+    internal: true
+    restore_mode: ALWAYS_OFF
+
+sensor:
+  - platform: homeassistant
+    id: local_tide_level
+    entity_id: sensor.local_tide_level
+    internal: true
+  - platform: homeassistant
+    id: current_temperature
+    entity_id: sensor.indoor_outdoor_meter_1d32_temperature
+    internal: true
+
+text_sensor:
+  - platform: homeassistant
+    id: weather_summary
+    entity_id: sensor.malay_falls_summary
+    internal: true
+  - platform: homeassistant
+    id: tide_graph_csv
+    entity_id: sensor.local_tide_graph_csv
+    internal: true
+time:
+  - platform: homeassistant
+    id: current_time
+image:
+  defaults:
+    type: BINARY
+    resize: 30x30
+    transparency: chroma_key    
+  images:
+    - file: mdi:lamp
+      id: lamp_img
