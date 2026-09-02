@@ -1,3 +1,6 @@
+debug:
+  update_interval: 30s
+
 sensor:
   - platform: internal_temperature
     name: "Core Temperature"
@@ -18,8 +21,3 @@ status_led:
 button:
   - platform: restart
     name: "Restart"
-
-debug:
-  update_interval: 30s
-
-
