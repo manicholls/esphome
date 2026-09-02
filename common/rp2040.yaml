@@ -1,6 +1,9 @@
 sensor:
   - platform: internal_temperature
     name: "Core Temperature"
+  - platform: debug
+    free:
+      name: "Free Heap"
 
 binary_sensor:
   - platform: status
@@ -19,8 +22,4 @@ button:
 debug:
   update_interval: 30s
 
-# Expose the Free memory metric in Home Assistant
-sensor:
-  - platform: debug
-    free:
-      name: "Free Heap"
+
