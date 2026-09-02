@@ -15,3 +15,12 @@ status_led:
 button:
   - platform: restart
     name: "Restart"
+
+debug:
+  update_interval: 30s
+
+# Expose the Free memory metric in Home Assistant
+sensor:
+  - platform: debug
+    free:
+      name: "Free Heap"
