@@ -1,8 +1,8 @@
 esphome:
-  name: pico-restouch
-  friendly_name: pico-restouch
+  name: office-display
+  friendly_name: office-display
 
-rp2040:
+rp2:
   board: rpipicow
 
 packages:
@@ -18,7 +18,7 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -42,15 +42,13 @@ display:
   - platform: mipi_spi
     id: my_display
     model: ST7789V
-    dimensions:
-      width: 320
-      height: 240
     rotation: 90
     cs_pin: GPIO9
     dc_pin: GPIO8
     reset_pin: GPIO15
-    data_rate: 20MHz
-    invert_colors: true 
+    data_rate: 62.5MHz
+    invert_colors: true
+    draw_rounding: 1
     lambda: |-
             it.strftime(it.get_width(), 0, id(roboto), TextAlign::TOP_RIGHT, "%H:%M", id(esptime).now());
             it.line(0, 35, 320, 35);
@@ -137,12 +135,6 @@ font:
     id: value_font
     size: 14
 
-time:
-  - platform: sntp
-    id: esptime
-    servers:
-      - ntp.home.lan
-
 color:
   - id: my_red
     red: 100%
@@ -192,7 +184,7 @@ sensor:
     name: "Outside Humidity"
     id: outside_humidity
     entity_id: sensor.indoor_outdoor_meter_2292_humidity
-    internal: True    
+    internal: True
  
   - platform: homeassistant
     name: "Inside Temp"
