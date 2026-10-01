@@ -14,9 +14,6 @@ binary_sensor:
     id: system_status
     icon: mdi:lan-connect
 
-status_led:
-  pin: 64
-
 button:
   - platform: restart
     name: "Restart"
