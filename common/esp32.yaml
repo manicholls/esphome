@@ -11,3 +11,10 @@ sensor:
 button:
   - platform: restart
     name: "Restart"
+
+time:
+  - platform: sntp
+    servers: 
+      - ntp.local
+      - homeassistant.local
+    timezone: "America/Toronto"
