@@ -24,6 +24,7 @@ button:
 
 time:
   - platform: sntp
+    id: esptime
     servers: 
       - ntp.local
       - homeassistant.local
