@@ -10,7 +10,7 @@ esphome:
           delay(100);
       - pcf85063.read_time:
 
-rp2040:
+rp2:
   board: rpipicow
 
 packages:
@@ -25,7 +25,6 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -99,6 +98,7 @@ time:
     address: 0x51
     update_interval: never
   - platform: sntp
+    timezone: America/Toronto
     on_time_sync:
       then:
         - pcf85063.write_time:
