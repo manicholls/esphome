@@ -1,0 +1,29 @@
+debug:
+  update_interval: 30s
+
+sensor:
+  - platform: internal_temperature
+    name: "Core Temperature"
+  - platform: debug
+    free:
+      name: "Free Heap"
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
+
+status_led:
+  pin: 64
+
+button:
+  - platform: restart
+    name: "Restart"
+
+time:
+  - platform: sntp
+    servers: 
+      - ntp.local
+      - homeassistant.local
+    timezone: "America/Toronto"
