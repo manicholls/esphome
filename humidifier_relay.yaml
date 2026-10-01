@@ -18,11 +18,11 @@ api:
   encryption:
     key: !secret api_key
   # Optional: reboot if disconnected for 15 minutes
+  # This prevents the humidifier from running endlessly.
   reboot_timeout: 15min
 
 ota:
   - platform: esphome
-    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -42,18 +42,10 @@ switch:
 bluetooth_proxy:
   active: true
 
-# Tracker: Updates the global counter on every packet received
 esp32_ble_tracker:
   id: ble_tracker
   scan_parameters: 
-    active: false 
-
-# Time component needed for the clock
-time:
-  - platform: sntp
-    id: time_ms
-    servers:
-      - ntp.home.lan
+    active: false
 
 sensor:
   - platform: homeassistant
