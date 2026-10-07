@@ -1,3 +1,24 @@
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+    id: system_status
+    icon: mdi:lan-connect
+
+sensor:
+  - platform: internal_temperature
+    name: "Core Temperature"
+
+button:
+  - platform: restart
+    name: "Restart"
+
+time:
+  - platform: sntp
+    servers: 
+      - ntp.local
+      - homeassistant.local
+    timezone: "America/Toronto"
+
 light:
   - platform: status_led
     output: onboard_led_output
