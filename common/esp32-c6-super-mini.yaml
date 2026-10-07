@@ -1,0 +1,10 @@
+light:
+  - platform: status_led
+    output: onboard_led_output
+    name: "Onboard LED"
+
+output:
+  - platform: gpio
+    pin: GPIO8
+    inverted: true
+    id: onboard_led_output
