@@ -8,8 +8,11 @@ esphome:
           id: led_strip
           effect: "Weather"
 
-rp2040:
+rp2:
   board: rpipicow
+
+packages:
+  github: github://manicholls/esphome/common/rp2040.yaml
 
 # Enable logging
 logger:
@@ -17,11 +20,10 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: ""
+    key: !secret api_key
 
 ota:
   - platform: esphome
-    password: ""
 
 wifi:
   ssid: !secret wifi_ssid
@@ -32,27 +34,6 @@ i2c:
     sda: 4
     scl: 5
     scan: true
-sensor:
-  - platform: adc
-    pin: TEMPERATURE
-    name: "Core Temperature"
-    unit_of_measurement: "°C"
-    filters:
-      - lambda: return 27 - (x - 0.706f) / 0.001721f;
-
-binary_sensor:
-  - platform: status
-    name: "Node Status"
-    id: system_status
-    icon: mdi:lan-connect
-
-status_led:
-  pin:
-    number: GPIO32
-
-button:
-  - platform: restart
-    name: "Restart"
 
 # Store the weather state globally
 globals:
@@ -64,13 +45,13 @@ globals:
 text_sensor:
   - platform: homeassistant
     id: ha_weather
-    entity_id: weather.ayr_weather_home
+    entity_id: weather.kitchener_waterloo_forecast
     on_value:
       then:
         - lambda: 'id(current_weather) = x;'
-        - light.turn_on:
-            id: led_strip
-            effect: "Weather"
+#        - light.turn_on:
+#            id: led_strip
+#            effect: "Weather"
 
 light:
   - platform: rp2040_pio_led_strip
@@ -78,7 +59,7 @@ light:
     name: "Plasma Stick LEDs"
     pin: GPIO15
     num_leds: 50
-    rgb_order: RGB
+    channel_colors: RGB
     chipset: WS2812
     pio: 0
     restore_mode: RESTORE_DEFAULT_ON
@@ -88,19 +69,41 @@ light:
           transition_length: 1s
           update_interval: 2s
       - flicker:
+      - addressable_scan:
+          name: "Scanner"
+          move_interval: 100ms
+          scan_width: 2
+      - addressable_lambda:
+          name: "Ocean Tide"
+          update_interval: 32ms
+          lambda: |-
+            static float time = 0;
+            time += 0.05; // Adjust for wave speed
+            
+            for (int i = 0; i < it.size(); i++) {
+              // Generate a sine wave across the LED strip
+              float wave = (sin(i * 0.2 + time) + 1.0) / 2.0;
+              
+              // Map the wave data to coastal blues and aquas
+              uint8_t r = 0;
+              uint8_t g = int(wave * 120) + 40; 
+              uint8_t b = int(wave * 155) + 100;
+              
+              it[i] = Color(r, g, b);
+            }
       - addressable_rainbow:
           name: Rainbow
           speed: 10
           width: 50
       - addressable_twinkle:
           name: Twinkle
-          twinkle_probability: 5%
+          twinkle_probability: 10%
           progress_interval: 4ms
       - addressable_fireworks:
           name: Fireworks
           update_interval: 32ms
           spark_probability: 10%
-          use_random_color: false
+          use_random_color: true
           fade_out_rate: 120
       - addressable_flicker:
           name: Flicker Effect
@@ -153,7 +156,7 @@ light:
               }
 
               // B. DYNAMIC STATES (Snow / Rain / Storm)
-              if (state == "snowy" || state == "snow" || state == "rainy" || state == "rain" || state == "pouring" || state == "lightning") {
+              if (state == "snowy" || state == "snow" || state == "rainy" || state == "rain" || state == "pouring" || state == "lightning" || state == "snowy-rainy") {
                 if (hold_timers[i] > 0) {
                   current_brightness[i] = 1.0f; 
                   hold_timers[i]--;
@@ -200,3 +203,331 @@ light:
                 it[i] = Color((uint8_t)(current_brightness[i] * 255), (uint8_t)(current_brightness[i] * 220), 0); 
               }
             }
+
+# 1. Larson Scanner (KITT / Cylon) - CORRECTED
+      - addressable_lambda:
+          name: "Larson Scanner"
+          update_interval: 30ms
+          lambda: |-
+            static float pos = 0;
+            static int direction = 1;
+            
+            // Fade existing pixels to create a smooth red tail
+            for (int i = 0; i < it.size(); i++) {
+              Color c = it[i].get();
+              it[i] = Color(c.r * 0.75, 0, 0); 
+            }
+            
+            // Draw the bright leading edge (Red)
+            it[int(pos)] = Color(255, 0, 0);
+            
+            // Move half a pixel per update for smooth sweeping
+            pos += direction * 0.5; 
+            if (pos >= it.size() - 1 || pos <= 0) {
+              direction *= -1;
+            }
+
+      # 2. Matrix Digital Rain
+      - addressable_lambda:
+          name: "Matrix Rain"
+          update_interval: 40ms
+          lambda: |-
+            // Decay the green channel on all LEDs
+            for (int i = 0; i < it.size(); i++) {
+              Color c = it[i].get();
+              it[i] = Color(0, c.g * 0.85, 0);
+            }
+            
+            // 30% chance to spawn a new bright "raindrop" each frame
+            if (random_float() > 0.7) {
+              int drop = random_uint32() % it.size();
+              it[drop] = Color(150, 255, 150); // White-ish green core
+            }
+
+      # 3. Meteor Shower (Looping Comet)
+      - addressable_lambda:
+          name: "Meteor Shower"
+          update_interval: 20ms
+          lambda: |-
+            static int pos = 0;
+            
+            // Fade all colors equally for a white/blue tail
+            for (int i = 0; i < it.size(); i++) {
+              Color c = it[i].get();
+              it[i] = Color(c.r * 0.8, c.g * 0.8, c.b * 0.8);
+            }
+            
+            // Draw the meteor head
+            it[pos] = Color(255, 255, 255);
+            pos = (pos + 1) % it.size();
+
+      # 4. Police Wig-Wag Strobes - CORRECTED
+      - addressable_lambda:
+          name: "Police Strobes"
+          update_interval: 50ms
+          lambda: |-
+            static int step = 0;
+            int half = it.size() / 2;
+            
+            // Clear strip (Black)
+            for(int i = 0; i < it.size(); i++) it[i] = Color(0, 0, 0);
+            
+            // Alternate halves every 2 frames
+            if (step % 4 < 2) {
+              for(int i = 0; i < half; i++) it[i] = Color(255, 0, 0); // Red
+            } else {
+              for(int i = half; i < it.size(); i++) it[i] = Color(0, 0, 255); // Blue
+            }
+            step++;
+
+      # 5. Sunset Plasma Wave
+      - addressable_lambda:
+          name: "Sunset Wave"
+          update_interval: 20ms
+          lambda: |-
+            static float phase = 0;
+            phase += 0.05; // Overall animation speed
+            
+            for (int i = 0; i < it.size(); i++) {
+              // sin() wave shifts based on pixel index (i)
+              float wave = sin(phase + (i * 0.2)) * 0.5 + 0.5;
+              
+              // Shift between pure Red and Yellow/Orange
+              uint8_t r = 255;
+              uint8_t g = 20 + (wave * 120); 
+              uint8_t b = 0;
+              
+              it[i] = Color(r, g, b);
+            }
+
+
+      # 6. Bioluminescent Surf
+      # Slowly rolling deep blues and cyans with random bright white "sparkles" 
+      # popping like seafoam on the crest of a wave.
+      - addressable_lambda:
+          name: "Bioluminescent Surf"
+          update_interval: 25ms
+          lambda: |-
+            static float phase = 0;
+            phase += 0.02; // Speed of the rolling wave
+            
+            for (int i = 0; i < it.size(); i++) {
+              // Create the base ocean wave
+              float wave = sin(phase + (i * 0.1)) * 0.5 + 0.5;
+              it[i] = Color(0, int(50 + wave * 100), int(150 + wave * 105)); 
+            }
+            
+            // 20% chance per frame to generate a bright sparkle
+            if (random_float() > 0.8) {
+               int pos = random_uint32() % it.size();
+               it[pos] = Color(200, 255, 255); // Bright icy blue/white
+            }
+
+      # 7. Cotton Candy Pastels
+      # Three overlapping sine waves running at different speeds to create
+      # a continuously morphing gradient of pastel pinks, purples, and blues.
+      - addressable_lambda:
+          name: "Pastel Morph"
+          update_interval: 30ms
+          lambda: |-
+            static float time = 0;
+            time += 0.015;
+            
+            for (int i = 0; i < it.size(); i++) {
+              // Offset the waves slightly differently for each color channel
+              float r_wave = sin(time + i * 0.05) * 0.5 + 0.5;
+              float g_wave = sin(time * 0.8 + i * 0.05 + 2.0) * 0.5 + 0.5;
+              float b_wave = sin(time * 1.2 + i * 0.05 + 4.0) * 0.5 + 0.5;
+              
+              // Keep red and blue high, modulate green for pastels
+              it[i] = Color(int(150 + r_wave * 105), int(50 + g_wave * 100), int(180 + b_wave * 75));
+            }
+
+      # 8. Heartbeat Pulse
+      # A double-beat timing loop that mimics a cardiac rhythm.
+      - addressable_lambda:
+          name: "Heartbeat"
+          update_interval: 20ms
+          lambda: |-
+            static int tick = 0;
+            tick = (tick + 1) % 60; // Full 60-tick cycle
+            float b = 0; // Brightness multiplier
+            
+            // First beat (sharp up, sharp down)
+            if (tick < 8) b = tick / 8.0;
+            else if (tick < 16) b = 1.0 - ((tick - 8) / 8.0);
+            // Second beat (slightly longer up, longer fade)
+            else if (tick < 24) b = (tick - 16) / 8.0;
+            else if (tick < 40) b = 1.0 - ((tick - 24) / 16.0);
+            else b = 0; // Rest period
+            
+            for (int i = 0; i < it.size(); i++) {
+               it[i] = Color(int(255 * b), 0, 0); 
+            }
+
+      # 9. Dual Scanner (Cyan & Magenta)
+      # Two sweeping dots moving in opposite directions that pass through each other.
+      - addressable_lambda:
+          name: "Dual Scanner"
+          update_interval: 20ms
+          lambda: |-
+            static float pos1 = 0;
+            static float pos2 = it.size() - 1;
+            static float dir1 = 0.6;
+            static float dir2 = -0.6;
+            
+            // Fade the background for a tail effect
+            for (int i = 0; i < it.size(); i++) {
+              Color c = it[i].get();
+              it[i] = Color(c.r * 0.8, c.g * 0.8, c.b * 0.8);
+            }
+            
+            // Draw the two leading dots (Bounds checking applied)
+            int p1 = int(pos1);
+            int p2 = int(pos2);
+            if (p1 >= 0 && p1 < it.size()) it[p1] = Color(0, 255, 255); // Cyan
+            if (p2 >= 0 && p2 < it.size()) it[p2] = Color(255, 0, 255); // Magenta
+            
+            // Bounce logic
+            pos1 += dir1;
+            if (pos1 >= it.size() - 1 || pos1 <= 0) dir1 *= -1;
+            
+            pos2 += dir2;
+            if (pos2 >= it.size() - 1 || pos2 <= 0) dir2 *= -1;
+
+      # 10. Arc Welder (Sparking)
+      # Simulates the erratic, intense bursts of a welding torch.
+      - addressable_lambda:
+          name: "Arc Welder"
+          update_interval: 16ms
+          lambda: |-
+            // Very fast decay for harsh, sharp flashes
+            for (int i = 0; i < it.size(); i++) {
+              Color c = it[i].get();
+              it[i] = Color(c.r * 0.5, c.g * 0.5, c.b * 0.6); 
+            }
+            
+            // 40% chance of a bright, multi-pixel flash
+            if (random_float() > 0.6) {
+              int pos = random_uint32() % it.size();
+              // Core flash (White/Blue)
+              it[pos] = Color(255, 255, 255);
+              
+              // Halo effect (Yellow/Orange)
+              if (pos > 0) it[pos - 1] = Color(255, 200, 50);
+              if (pos < it.size() - 1) it[pos + 1] = Color(255, 200, 50);
+            }
+
+      - addressable_lambda:
+          name: "Candle Flicker"
+          update_interval: 120ms # Tripled from 40ms to make the overall motion slower
+          lambda: |-
+            static float intensity[150]; // Ensure this matches or exceeds your num_leds
+            static bool initialized = false;
+            
+            int num_leds = it.size();
+            
+            // Initialize random baseline intensities on first run
+            if (!initialized) {
+              for (int i = 0; i < num_leds; i++) {
+                intensity[i] = 0.4 + (random_float() * 0.6);
+              }
+              initialized = true;
+            }
+
+            for (int i = 0; i < num_leds; i++) {
+              // Only update roughly 25% of the LEDs on each frame for fewer active flickers
+              if (random_float() < 0.10) {
+                float delta = (random_float() - 0.5) * 0.2;
+                intensity[i] += delta;
+                
+                // Clamp intensity bounds
+                if (intensity[i] < 0.2) intensity[i] = 0.2;
+                if (intensity[i] > 1.0) intensity[i] = 1.0;
+              }
+
+              // Candle color profile
+              float r = 255.0 * intensity[i];
+              float g = (100.0 + (random_float() * 50.0)) * intensity[i];
+              float b = (random_float() * 8.0) * intensity[i];
+
+              it[i] = Color(r, g, b);
+            }
+select:
+  - platform: template
+    name: "Plasma Effects"
+    id: plasma_effect_select
+    icon: mdi:palette
+    options:
+      - "Weather"
+      - "Autumn Colours"
+      - "Winter Frost"
+      - "Spring Bloom"
+      - "Arc Welder"
+      - "Bioluminescent Surf"
+      - Rainbow
+      - Twinkle
+      - "Fast Twinkle"
+      - "Sunset Wave"
+      - "Ocean Tide"
+      - "Fireworks"
+      - "Candle Flicker"
+        
+    set_action:
+      - lambda: |-
+          // Check which option was selected and trigger your effect/light command
+          if (x == "Autumn Colours") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Autumn Colours");
+            call.perform();          
+          } else if (x == "Winter Frost") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Winter Frost");
+            call.perform();          
+          } else if (x == "Spring Bloom") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Spring Bloom");
+            call.perform();          
+          } else if (x == "Bioluminescent Surf") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Bioluminescent Surf");
+            call.perform();          
+          } else if (x == "Pastel Morph") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Pastel Morph");
+            call.perform();                
+          } else if (x == "Twinkle") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Twinkle");
+            call.perform();       
+          } else if (x == "Rainbow") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Rainbow");
+            call.perform();                   
+          } else if (x == "Fast Twinkle") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Fast Twinkle");
+            call.perform();
+          } else if (x == "Sunset Wave") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Sunset Wave");
+            call.perform();    
+          } else if (x == "Ocean Tide") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Ocean Tide");
+            call.perform();
+          } else if (x == "Weather") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Weather");
+            call.perform();     
+          } else if (x == "Candle Flicker") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Candle Flicker");
+            call.perform();   
+          } else if (x == "Fireworks") {
+            auto call = id(led_strip).turn_on();
+            call.set_effect("Fireworks");
+            call.perform();       
+            } else {
+            // Turn off or reset effects
+          }    
