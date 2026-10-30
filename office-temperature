@@ -1,0 +1,46 @@
+esphome:
+  name: office-temperature
+  min_version: 2026.4.0
+  name_add_mac_suffix: false
+
+esp32:
+  variant: ESP32C3
+  board: esp32-c3-devkitm-1
+
+packages:
+  remote_package_files:
+    url: https://github.com/manicholls/esphome/
+    files: [common/esp32-c3-super-mini.yaml]
+    ref: main
+    refresh: 0s
+# Enable logging
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  post_connect_roaming: true
+
+captive_portal:
+  
+  
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+
+
+sensor:
+  - platform: dht
+    pin: GPIO4
+    model: DHT11
+    temperature:
+      name: "Temperature"
+      filters:
+        - offset: -3  # Adjust this negative value until it matches your reference thermometer
+    humidity:
+      name: "Humidity"
+    update_interval: 60s
+
