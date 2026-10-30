@@ -52,6 +52,8 @@ bh1745:
   integration_time: 160ms       # 160ms, 320ms, 640ms, 1280ms
   gain: 32x                     # 1x or 32x
 
+
+  
 sensor:
   - platform: bh1745
     id: bh1745_base
@@ -68,14 +70,26 @@ sensor:
   - platform: bme680
     address: 0x77
     temperature:
-      name: "BME688 Temperature"
+      id: temperature
+      name: "Temperature"
+      filters:
+        - offset: -8.5  # Adjust this negative value until it matches your reference thermometer
     humidity:
-      name: "BME688 Humidity"
+      id: humidity
+      name: "Humidity"
     pressure:
-      name: "BME688 Pressure"
+      name: "Pressure"
     gas_resistance:
-      name: "BME688 Gas Resistance"
-
+      id: "gas_resistance"
+      name: "Gas Resistance"
+  - platform: template
+    name: "Indoor Air Quality"
+    id: iaq
+    icon: "mdi:gauge"
+    # calculation: comp_gas = log(R_gas[ohm]) + 0.04 log(Ohm)/%rh * hum[%rh]
+    lambda: |-
+      return log(id(gas_resistance).get_state()) + 0.04 *  id(humidity).get_state();
+    state_class: "measurement"
 
 binary_sensor:
   - id: activity_button
@@ -118,3 +132,33 @@ light:
     id: activity_led
     name: "Activity LED"
     internal: True
+
+text_sensor:
+  - platform: template
+    name: "IAQ Classification"
+    icon: "mdi:checkbox-marked-circle-outline"
+    lambda: |-
+      if (int(id(iaq).get_state()) <= 50) {
+        return {"Excellent"};
+      }
+      else if (int(id(iaq).get_state()) <= 100) {
+        return {"Good"};
+      }
+      else if (int(id(iaq).get_state()) <= 150) {
+        return {"Lightly polluted"};
+      }
+      else if (int(id(iaq).get_state()) <= 200) {
+        return {"Moderately polluted"};
+      }
+      else if (int(id(iaq).get_state()) <= 250) {
+        return {"Heavily polluted"};
+      }
+      else if (int(id(iaq).get_state()) <= 350) {
+        return {"Severely polluted"};
+      }
+      else if (int(id(iaq).get_state()) <= 500) {
+        return {"Extremely polluted"};
+      }
+      else {
+        return {"unknown"};
+      }
